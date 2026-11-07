@@ -27,12 +27,7 @@ pub const CACHELINE_ALIGN: usize = {
     {
         128
     }
-    #[cfg(any(
-        target_arch = "arm",
-        target_arch = "mips",
-        target_arch = "mips64",
-        target_arch = "riscv64",
-    ))]
+    #[cfg(any(target_arch = "arm", target_arch = "mips", target_arch = "mips64"))]
     {
         32
     }
@@ -47,7 +42,6 @@ pub const CACHELINE_ALIGN: usize = {
         target_arch = "arm",
         target_arch = "mips",
         target_arch = "mips64",
-        target_arch = "riscv64",
         target_arch = "s390x",
     )))]
     {
@@ -1044,11 +1038,22 @@ macro_rules! gemm_def {
                 }
             }
 
+            #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+            {
+                if $crate::feature_detected!("v") {
+                    rvv::gemm_basic
+                } else {
+                    scalar::gemm_basic
+                }
+            }
+
             #[cfg(not(any(
                 target_arch = "x86",
                 target_arch = "x86_64",
                 target_arch = "aarch64",
                 target_arch = "wasm32",
+                target_arch = "riscv32",
+                target_arch = "riscv64",
             )))]
             {
                 scalar::gemm_basic
@@ -1089,6 +1094,9 @@ macro_rules! gemm_def {
 
         #[cfg(target_arch = "wasm32")]
         $crate::__inject_mod!(simd128, $ty, 2 * $multiplier, Scalar, false);
+
+        #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+        $crate::__inject_mod!(rvv, $ty, 2 * $multiplier, Rvv, false);
     };
 }
 

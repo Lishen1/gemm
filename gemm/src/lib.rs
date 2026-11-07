@@ -1,6 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(rust_2018_idioms)]
-
 mod gemm;
 
 #[cfg(feature = "f16")]

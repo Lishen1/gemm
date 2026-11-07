@@ -9,6 +9,9 @@ pub use x86::*;
 #[cfg(target_arch = "aarch64")]
 pub use aarch64::*;
 
+#[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+pub use riscv::*;
+
 use crate::gemm::{c32, c64};
 
 pub trait Simd: Copy + Send + Sync + 'static {
@@ -2391,6 +2394,501 @@ pub mod aarch64 {
         #[inline(always)]
         fn simd_add(self, lhs: Self::AccN, rhs: Self::AccN) -> Self::AccN {
             unsafe { transmute(vaddq_f32(transmute(lhs), transmute(rhs))) }
+        }
+    }
+}
+
+#[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+pub mod riscv {
+    use super::*;
+    use core::arch::asm;
+
+    #[derive(Copy, Clone, Debug)]
+    pub struct Rvv {
+        __private: (),
+    }
+
+    impl Simd for Rvv {
+        #[inline]
+        #[target_feature(enable = "v")]
+        unsafe fn vectorize<F: NullaryFnOnce>(f: F) -> F::Output {
+            f.call()
+        }
+    }
+
+    unsafe impl MixedSimd<f32, f32, f32, f32> for Rvv {
+        const SIMD_WIDTH: usize = 4;
+
+        type LhsN = [f32; 4];
+        type RhsN = [f32; 4];
+        type DstN = [f32; 4];
+        type AccN = [f32; 4];
+
+        #[inline]
+        fn try_new() -> Option<Self> {
+            Some(Self { __private: () })
+        }
+
+        #[inline(always)]
+        fn mult(self, lhs: f32, rhs: f32) -> f32 {
+            lhs * rhs
+        }
+        #[inline(always)]
+        fn mult_add(self, lhs: f32, rhs: f32, acc: f32) -> f32 {
+            #[cfg(feature = "std")]
+            {
+                f32::mul_add(lhs, rhs, acc)
+            }
+            #[cfg(not(feature = "std"))]
+            {
+                lhs * rhs + acc
+            }
+        }
+        #[inline(always)]
+        fn from_lhs(self, lhs: f32) -> f32 {
+            lhs
+        }
+        #[inline(always)]
+        fn from_rhs(self, rhs: f32) -> f32 {
+            rhs
+        }
+        #[inline(always)]
+        fn from_dst(self, dst: f32) -> f32 {
+            dst
+        }
+        #[inline(always)]
+        fn into_dst(self, acc: f32) -> f32 {
+            acc
+        }
+        #[inline(always)]
+        fn simd_from_lhs(self, lhs: Self::LhsN) -> Self::AccN {
+            lhs
+        }
+        #[inline(always)]
+        fn simd_from_rhs(self, rhs: Self::RhsN) -> Self::AccN {
+            rhs
+        }
+        #[inline(always)]
+        fn simd_from_dst(self, dst: Self::DstN) -> Self::AccN {
+            dst
+        }
+        #[inline(always)]
+        fn simd_into_dst(self, acc: Self::AccN) -> Self::DstN {
+            acc
+        }
+        #[inline(always)]
+        fn add(self, lhs: f32, rhs: f32) -> f32 {
+            lhs + rhs
+        }
+
+        #[inline(always)]
+        fn simd_splat(self, lhs: f32) -> Self::AccN {
+            let mut out = [0.0f32; 4];
+            unsafe {
+                asm!(
+                    "vsetivli x0, 4, e32, m1, ta, ma",
+                    "vfmv.v.f v0, {val}",
+                    "vse32.v v0, ({ptr})",
+                    val = in(freg) lhs,
+                    ptr = in(reg) out.as_mut_ptr(),
+                    out("v0") _,
+                    options(nostack)
+                );
+            }
+            out
+        }
+
+        #[inline(always)]
+        fn simd_mul(self, lhs: Self::AccN, rhs: Self::AccN) -> Self::AccN {
+            let mut out = [0.0f32; 4];
+            unsafe {
+                asm!(
+                    "vsetivli x0, 4, e32, m1, ta, ma",
+                    "vle32.v v0, ({a})",
+                    "vle32.v v1, ({b})",
+                    "vfmul.vv v2, v0, v1",
+                    "vse32.v v2, ({out})",
+                    a = in(reg) lhs.as_ptr(),
+                    b = in(reg) rhs.as_ptr(),
+                    out = in(reg) out.as_mut_ptr(),
+                    out("v0") _, out("v1") _, out("v2") _,
+                    options(nostack)
+                );
+            }
+            out
+        }
+
+        #[inline(always)]
+        fn simd_add(self, lhs: Self::AccN, rhs: Self::AccN) -> Self::AccN {
+            let mut out = [0.0f32; 4];
+            unsafe {
+                asm!(
+                    "vsetivli x0, 4, e32, m1, ta, ma",
+                    "vle32.v v0, ({a})",
+                    "vle32.v v1, ({b})",
+                    "vfadd.vv v2, v0, v1",
+                    "vse32.v v2, ({out})",
+                    a = in(reg) lhs.as_ptr(),
+                    b = in(reg) rhs.as_ptr(),
+                    out = in(reg) out.as_mut_ptr(),
+                    out("v0") _, out("v1") _, out("v2") _,
+                    options(nostack)
+                );
+            }
+            out
+        }
+
+        #[inline(always)]
+        fn simd_mult_add(self, lhs: Self::AccN, rhs: Self::AccN, acc: Self::AccN) -> Self::AccN {
+            let mut out = acc;
+            unsafe {
+                asm!(
+                    "vsetivli x0, 4, e32, m1, ta, ma",
+                    "vle32.v v0, ({a})",
+                    "vle32.v v1, ({b})",
+                    "vle32.v v2, ({c})",
+                    "vfmacc.vv v2, v0, v1",
+                    "vse32.v v2, ({out})",
+                    a = in(reg) lhs.as_ptr(),
+                    b = in(reg) rhs.as_ptr(),
+                    c = in(reg) acc.as_ptr(),
+                    out = in(reg) out.as_mut_ptr(),
+                    out("v0") _, out("v1") _, out("v2") _,
+                    options(nostack)
+                );
+            }
+            out
+        }
+
+        #[inline(always)]
+        fn vectorize<F: NullaryFnOnce>(self, f: F) -> F::Output {
+            #[inline]
+            // #[target_feature(enable = "v")]
+            unsafe fn implementation<F: NullaryFnOnce>(f: F) -> F::Output {
+                f.call()
+            }
+            unsafe { implementation(f) }
+        }
+    }
+
+    unsafe impl MixedSimd<f64, f64, f64, f64> for Rvv {
+        const SIMD_WIDTH: usize = 2;
+
+        type LhsN = [f64; 2];
+        type RhsN = [f64; 2];
+        type DstN = [f64; 2];
+        type AccN = [f64; 2];
+
+        #[inline]
+        fn try_new() -> Option<Self> {
+            Some(Self { __private: () })
+        }
+
+        #[inline(always)]
+        fn mult(self, lhs: f64, rhs: f64) -> f64 {
+            lhs * rhs
+        }
+        #[inline(always)]
+        fn mult_add(self, lhs: f64, rhs: f64, acc: f64) -> f64 {
+            #[cfg(feature = "std")]
+            {
+                f64::mul_add(lhs, rhs, acc)
+            }
+            #[cfg(not(feature = "std"))]
+            {
+                lhs * rhs + acc
+            }
+        }
+        #[inline(always)]
+        fn from_lhs(self, lhs: f64) -> f64 {
+            lhs
+        }
+        #[inline(always)]
+        fn from_rhs(self, rhs: f64) -> f64 {
+            rhs
+        }
+        #[inline(always)]
+        fn from_dst(self, dst: f64) -> f64 {
+            dst
+        }
+        #[inline(always)]
+        fn into_dst(self, acc: f64) -> f64 {
+            acc
+        }
+        #[inline(always)]
+        fn simd_from_lhs(self, lhs: Self::LhsN) -> Self::AccN {
+            lhs
+        }
+        #[inline(always)]
+        fn simd_from_rhs(self, rhs: Self::RhsN) -> Self::AccN {
+            rhs
+        }
+        #[inline(always)]
+        fn simd_from_dst(self, dst: Self::DstN) -> Self::AccN {
+            dst
+        }
+        #[inline(always)]
+        fn simd_into_dst(self, acc: Self::AccN) -> Self::DstN {
+            acc
+        }
+        #[inline(always)]
+        fn add(self, lhs: f64, rhs: f64) -> f64 {
+            lhs + rhs
+        }
+
+        #[inline(always)]
+        fn simd_splat(self, lhs: f64) -> Self::AccN {
+            let mut out = [0.0f64; 2];
+            unsafe {
+                asm!(
+                    "vsetivli x0, 2, e64, m1, ta, ma",
+                    "vfmv.v.f v0, {val}",
+                    "vse64.v v0, ({ptr})",
+                    val = in(freg) lhs,
+                    ptr = in(reg) out.as_mut_ptr(),
+                    out("v0") _,
+                    options(nostack)
+                );
+            }
+            out
+        }
+
+        #[inline(always)]
+        fn simd_mul(self, lhs: Self::AccN, rhs: Self::AccN) -> Self::AccN {
+            let mut out = [0.0f64; 2];
+            unsafe {
+                asm!(
+                    "vsetivli x0, 2, e64, m1, ta, ma",
+                    "vle64.v v0, ({a})",
+                    "vle64.v v1, ({b})",
+                    "vfmul.vv v2, v0, v1",
+                    "vse64.v v2, ({out})",
+                    a = in(reg) lhs.as_ptr(),
+                    b = in(reg) rhs.as_ptr(),
+                    out = in(reg) out.as_mut_ptr(),
+                    out("v0") _, out("v1") _, out("v2") _,
+                    options(nostack)
+                );
+            }
+            out
+        }
+
+        #[inline(always)]
+        fn simd_add(self, lhs: Self::AccN, rhs: Self::AccN) -> Self::AccN {
+            let mut out = [0.0f64; 2];
+            unsafe {
+                asm!(
+                    "vsetivli x0, 2, e64, m1, ta, ma",
+                    "vle64.v v0, ({a})",
+                    "vle64.v v1, ({b})",
+                    "vfadd.vv v2, v0, v1",
+                    "vse64.v v2, ({out})",
+                    a = in(reg) lhs.as_ptr(),
+                    b = in(reg) rhs.as_ptr(),
+                    out = in(reg) out.as_mut_ptr(),
+                    out("v0") _, out("v1") _, out("v2") _,
+                    options(nostack)
+                );
+            }
+            out
+        }
+
+        #[inline(always)]
+        fn simd_mult_add(self, lhs: Self::AccN, rhs: Self::AccN, acc: Self::AccN) -> Self::AccN {
+            let mut out = acc;
+            unsafe {
+                asm!(
+                    "vsetivli x0, 2, e64, m1, ta, ma",
+                    "vle64.v v0, ({a})",
+                    "vle64.v v1, ({b})",
+                    "vle64.v v2, ({c})",
+                    "vfmacc.vv v2, v0, v1",
+                    "vse64.v v2, ({out})",
+                    a = in(reg) lhs.as_ptr(),
+                    b = in(reg) rhs.as_ptr(),
+                    c = in(reg) acc.as_ptr(),
+                    out = in(reg) out.as_mut_ptr(),
+                    out("v0") _, out("v1") _, out("v2") _,
+                    options(nostack)
+                );
+            }
+            out
+        }
+
+        #[inline(always)]
+        fn vectorize<F: NullaryFnOnce>(self, f: F) -> F::Output {
+            #[inline]
+            // #[target_feature(enable = "v")]
+            unsafe fn implementation<F: NullaryFnOnce>(f: F) -> F::Output {
+                f.call()
+            }
+            unsafe { implementation(f) }
+        }
+    }
+
+    unsafe impl MixedSimd<c32, c32, c32, c32> for Rvv {
+        const SIMD_WIDTH: usize = 1;
+        type LhsN = [c32; 1];
+        type RhsN = [c32; 1];
+        type DstN = [c32; 1];
+        type AccN = [c32; 1];
+
+        #[inline]
+        fn try_new() -> Option<Self> {
+            Some(Self { __private: () })
+        }
+        #[inline(always)]
+        fn mult(self, lhs: c32, rhs: c32) -> c32 {
+            lhs * rhs
+        }
+        #[inline(always)]
+        fn mult_add(self, lhs: c32, rhs: c32, acc: c32) -> c32 {
+            lhs * rhs + acc
+        }
+        #[inline(always)]
+        fn from_lhs(self, lhs: c32) -> c32 {
+            lhs
+        }
+        #[inline(always)]
+        fn from_rhs(self, rhs: c32) -> c32 {
+            rhs
+        }
+        #[inline(always)]
+        fn from_dst(self, dst: c32) -> c32 {
+            dst
+        }
+        #[inline(always)]
+        fn into_dst(self, acc: c32) -> c32 {
+            acc
+        }
+        #[inline(always)]
+        fn simd_from_lhs(self, lhs: Self::LhsN) -> Self::AccN {
+            lhs
+        }
+        #[inline(always)]
+        fn simd_from_rhs(self, rhs: Self::RhsN) -> Self::AccN {
+            rhs
+        }
+        #[inline(always)]
+        fn simd_splat(self, lhs: c32) -> Self::AccN {
+            [lhs]
+        }
+        #[inline(always)]
+        fn simd_from_dst(self, dst: Self::DstN) -> Self::AccN {
+            dst
+        }
+        #[inline(always)]
+        fn simd_into_dst(self, acc: Self::AccN) -> Self::DstN {
+            acc
+        }
+        #[inline(always)]
+        fn add(self, lhs: c32, rhs: c32) -> c32 {
+            lhs + rhs
+        }
+        #[inline(always)]
+        fn simd_mul(self, lhs: Self::AccN, rhs: Self::AccN) -> Self::AccN {
+            [lhs[0] * rhs[0]]
+        }
+        #[inline(always)]
+        fn simd_add(self, lhs: Self::AccN, rhs: Self::AccN) -> Self::AccN {
+            [lhs[0] + rhs[0]]
+        }
+        #[inline(always)]
+        fn simd_mult_add(self, lhs: Self::AccN, rhs: Self::AccN, acc: Self::AccN) -> Self::AccN {
+            [lhs[0] * rhs[0] + acc[0]]
+        }
+
+        #[inline(always)]
+        fn vectorize<F: NullaryFnOnce>(self, f: F) -> F::Output {
+            #[inline]
+            #[target_feature(enable = "v")]
+            unsafe fn implementation<F: NullaryFnOnce>(f: F) -> F::Output {
+                f.call()
+            }
+            unsafe { implementation(f) }
+        }
+    }
+
+    unsafe impl MixedSimd<c64, c64, c64, c64> for Rvv {
+        const SIMD_WIDTH: usize = 1;
+        type LhsN = [c64; 1];
+        type RhsN = [c64; 1];
+        type DstN = [c64; 1];
+        type AccN = [c64; 1];
+
+        #[inline]
+        fn try_new() -> Option<Self> {
+            Some(Self { __private: () })
+        }
+        #[inline(always)]
+        fn mult(self, lhs: c64, rhs: c64) -> c64 {
+            lhs * rhs
+        }
+        #[inline(always)]
+        fn mult_add(self, lhs: c64, rhs: c64, acc: c64) -> c64 {
+            lhs * rhs + acc
+        }
+        #[inline(always)]
+        fn from_lhs(self, lhs: c64) -> c64 {
+            lhs
+        }
+        #[inline(always)]
+        fn from_rhs(self, rhs: c64) -> c64 {
+            rhs
+        }
+        #[inline(always)]
+        fn from_dst(self, dst: c64) -> c64 {
+            dst
+        }
+        #[inline(always)]
+        fn into_dst(self, acc: c64) -> c64 {
+            acc
+        }
+        #[inline(always)]
+        fn simd_from_lhs(self, lhs: Self::LhsN) -> Self::AccN {
+            lhs
+        }
+        #[inline(always)]
+        fn simd_from_rhs(self, rhs: Self::RhsN) -> Self::AccN {
+            rhs
+        }
+        #[inline(always)]
+        fn simd_splat(self, lhs: c64) -> Self::AccN {
+            [lhs]
+        }
+        #[inline(always)]
+        fn simd_from_dst(self, dst: Self::DstN) -> Self::AccN {
+            dst
+        }
+        #[inline(always)]
+        fn simd_into_dst(self, acc: Self::AccN) -> Self::DstN {
+            acc
+        }
+        #[inline(always)]
+        fn add(self, lhs: c64, rhs: c64) -> c64 {
+            lhs + rhs
+        }
+        #[inline(always)]
+        fn simd_mul(self, lhs: Self::AccN, rhs: Self::AccN) -> Self::AccN {
+            [lhs[0] * rhs[0]]
+        }
+        #[inline(always)]
+        fn simd_add(self, lhs: Self::AccN, rhs: Self::AccN) -> Self::AccN {
+            [lhs[0] + rhs[0]]
+        }
+        #[inline(always)]
+        fn simd_mult_add(self, lhs: Self::AccN, rhs: Self::AccN, acc: Self::AccN) -> Self::AccN {
+            [lhs[0] * rhs[0] + acc[0]]
+        }
+
+        #[inline(always)]
+        fn vectorize<F: NullaryFnOnce>(self, f: F) -> F::Output {
+            #[inline]
+            // #[target_feature(enable = "v")]
+            unsafe fn implementation<F: NullaryFnOnce>(f: F) -> F::Output {
+                f.call()
+            }
+            unsafe { implementation(f) }
         }
     }
 }

@@ -507,3 +507,117 @@ pub mod simd128 {
         pub const H_UKR: [[gemm_common::microkernel::HMicroKernelFn<T>; H_N]; H_M] = [];
     }
 }
+
+#[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+pub mod rvv {
+    pub mod f64 {
+        use core::arch::asm;
+        use core::arch::riscv64::*;
+        use core::mem::transmute;
+
+        use std::simd::f64x2;
+        use std::simd::prelude::SimdFloat;
+        use std::simd::StdFloat;
+
+        type T = f64;
+        const N: usize = 2;
+        type Pack = [T; N];
+
+        #[inline(always)]
+        unsafe fn splat(value: T) -> Pack {
+            f64x2::splat(value).to_array()
+        }
+
+        #[inline(always)]
+        unsafe fn mul(lhs: Pack, rhs: Pack) -> Pack {
+            let lhs: f64x2 = transmute(lhs);
+            let rhs: f64x2 = transmute(rhs);
+            transmute(lhs * rhs)
+        }
+
+        #[inline(always)]
+        unsafe fn add(lhs: Pack, rhs: Pack) -> Pack {
+            let lhs: f64x2 = transmute(lhs);
+            let rhs: f64x2 = transmute(rhs);
+            transmute(lhs + rhs)
+        }
+
+        #[inline(always)]
+        unsafe fn mul_add(a: Pack, b: Pack, c: Pack) -> Pack {
+            let a: f64x2 = transmute(a);
+            let b: f64x2 = transmute(b);
+            let c: f64x2 = transmute(c);
+            transmute(a.mul_add(b, c))
+        }
+
+        #[inline(always)]
+        pub unsafe fn scalar_mul(lhs: T, rhs: T) -> T {
+            lhs * rhs
+        }
+
+        #[inline(always)]
+        pub unsafe fn scalar_add(lhs: T, rhs: T) -> T {
+            lhs + rhs
+        }
+
+        #[inline(always)]
+        pub unsafe fn scalar_mul_add(a: T, b: T, c: T) -> T {
+            a.mul_add(b, c)
+        }
+
+        #[inline(always)]
+        pub unsafe fn partial_load(ptr: *const T, len: usize) -> Pack {
+            let mut arr = [0.0; N];
+            core::ptr::copy_nonoverlapping(ptr, arr.as_mut_ptr(), len.min(N));
+            arr
+        }
+
+        #[inline(always)]
+        pub unsafe fn reduce_sum(x: Pack) -> T {
+            let x: f64x2 = transmute(x);
+            x.reduce_sum()
+        }
+
+        microkernel!(["v"], 2, x1x1, 1, 1);
+        microkernel!(["v"], 2, x1x2, 1, 2);
+        microkernel!(["v"], 2, x1x3, 1, 3);
+        microkernel!(["v"], 2, x1x4, 1, 4);
+
+        microkernel!(["v"], 2, x2x1, 2, 1);
+        microkernel!(["v"], 2, x2x2, 2, 2);
+        microkernel!(["v"], 2, x2x3, 2, 3);
+        microkernel!(["v"], 2, x2x4, 2, 4);
+
+        microkernel!(["v"], 2, x3x1, 3, 1);
+        microkernel!(["v"], 2, x3x2, 3, 2);
+        microkernel!(["v"], 2, x3x3, 3, 3);
+        microkernel!(["v"], 2, x3x4, 3, 4);
+
+        microkernel!(["v"], 2, x4x1, 4, 1);
+        microkernel!(["v"], 2, x4x2, 4, 2);
+        microkernel!(["v"], 2, x4x3, 4, 3);
+        microkernel!(["v"], 2, x4x4, 4, 4);
+
+        microkernel!(["v"], 2, x5x1, 5, 1);
+        microkernel!(["v"], 2, x5x2, 5, 2);
+        microkernel!(["v"], 2, x5x3, 5, 3);
+        microkernel!(["v"], 2, x5x4, 5, 4);
+
+        microkernel_fn_array! {
+            [x1x1, x1x2, x1x3, x1x4,],
+            [x2x1, x2x2, x2x3, x2x4,],
+            [x3x1, x3x2, x3x3, x3x4,],
+            [x4x1, x4x2, x4x3, x4x4,],
+            [x5x1, x5x2, x5x3, x5x4,],
+        }
+
+        horizontal_kernel!(["v"], hx1x1, 1, 1);
+        horizontal_kernel!(["v"], hx1x2, 1, 2);
+        horizontal_kernel!(["v"], hx2x1, 2, 1);
+        horizontal_kernel!(["v"], hx2x2, 2, 2);
+        hmicrokernel_fn_array! {
+            [hx1x1, hx1x2,],
+            [hx2x1, hx2x2,],
+        }
+    }
+}

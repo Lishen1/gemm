@@ -1,4 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(riscv_target_feature)]
 
 use core::sync::atomic::{AtomicBool, Ordering::Relaxed};
 
@@ -93,5 +94,13 @@ macro_rules! feature_detected {
 macro_rules! feature_detected {
     ("simd128") => {
         $crate::get_wasm_simd128()
+    };
+}
+
+#[cfg(all(feature = "std", any(target_arch = "riscv32", target_arch = "riscv64")))]
+#[macro_export]
+macro_rules! feature_detected {
+    ($tt: tt) => {
+        ::std::arch::is_riscv_feature_detected!($tt)
     };
 }
