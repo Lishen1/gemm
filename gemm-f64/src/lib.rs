@@ -1,5 +1,4 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(repr_simd)]
 #![feature(portable_simd)]
 #![feature(stdarch_riscv_feature_detection)]
 #![feature(riscv_ext_intrinsics)]

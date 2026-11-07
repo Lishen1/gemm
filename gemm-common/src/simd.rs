@@ -2401,7 +2401,9 @@ pub mod aarch64 {
 #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
 pub mod riscv {
     use super::*;
-    use core::arch::asm;
+    use std::simd::f32x4;
+    use std::simd::f64x2;
+    use std::simd::StdFloat;
 
     #[derive(Copy, Clone, Debug)]
     pub struct Rvv {
@@ -2483,87 +2485,30 @@ pub mod riscv {
 
         #[inline(always)]
         fn simd_splat(self, lhs: f32) -> Self::AccN {
-            let mut out = [0.0f32; 4];
-            unsafe {
-                asm!(
-                    "vsetivli x0, 4, e32, m1, ta, ma",
-                    "vfmv.v.f v0, {val}",
-                    "vse32.v v0, ({ptr})",
-                    val = in(freg) lhs,
-                    ptr = in(reg) out.as_mut_ptr(),
-                    out("v0") _,
-                    options(nostack)
-                );
-            }
-            out
+            f32x4::splat(lhs).to_array()
         }
 
         #[inline(always)]
         fn simd_mul(self, lhs: Self::AccN, rhs: Self::AccN) -> Self::AccN {
-            let mut out = [0.0f32; 4];
-            unsafe {
-                asm!(
-                    "vsetivli x0, 4, e32, m1, ta, ma",
-                    "vle32.v v0, ({a})",
-                    "vle32.v v1, ({b})",
-                    "vfmul.vv v2, v0, v1",
-                    "vse32.v v2, ({out})",
-                    a = in(reg) lhs.as_ptr(),
-                    b = in(reg) rhs.as_ptr(),
-                    out = in(reg) out.as_mut_ptr(),
-                    out("v0") _, out("v1") _, out("v2") _,
-                    options(nostack)
-                );
-            }
-            out
+            (f32x4::from_array(lhs) * f32x4::from_array(rhs)).to_array()
         }
 
         #[inline(always)]
         fn simd_add(self, lhs: Self::AccN, rhs: Self::AccN) -> Self::AccN {
-            let mut out = [0.0f32; 4];
-            unsafe {
-                asm!(
-                    "vsetivli x0, 4, e32, m1, ta, ma",
-                    "vle32.v v0, ({a})",
-                    "vle32.v v1, ({b})",
-                    "vfadd.vv v2, v0, v1",
-                    "vse32.v v2, ({out})",
-                    a = in(reg) lhs.as_ptr(),
-                    b = in(reg) rhs.as_ptr(),
-                    out = in(reg) out.as_mut_ptr(),
-                    out("v0") _, out("v1") _, out("v2") _,
-                    options(nostack)
-                );
-            }
-            out
+            (f32x4::from_array(lhs) + f32x4::from_array(rhs)).to_array()
         }
 
         #[inline(always)]
         fn simd_mult_add(self, lhs: Self::AccN, rhs: Self::AccN, acc: Self::AccN) -> Self::AccN {
-            let mut out = acc;
-            unsafe {
-                asm!(
-                    "vsetivli x0, 4, e32, m1, ta, ma",
-                    "vle32.v v0, ({a})",
-                    "vle32.v v1, ({b})",
-                    "vle32.v v2, ({c})",
-                    "vfmacc.vv v2, v0, v1",
-                    "vse32.v v2, ({out})",
-                    a = in(reg) lhs.as_ptr(),
-                    b = in(reg) rhs.as_ptr(),
-                    c = in(reg) acc.as_ptr(),
-                    out = in(reg) out.as_mut_ptr(),
-                    out("v0") _, out("v1") _, out("v2") _,
-                    options(nostack)
-                );
-            }
-            out
+            f32x4::from_array(lhs)
+                .mul_add(f32x4::from_array(rhs), f32x4::from_array(acc))
+                .to_array()
         }
 
         #[inline(always)]
         fn vectorize<F: NullaryFnOnce>(self, f: F) -> F::Output {
             #[inline]
-            // #[target_feature(enable = "v")]
+            #[target_feature(enable = "v")]
             unsafe fn implementation<F: NullaryFnOnce>(f: F) -> F::Output {
                 f.call()
             }
@@ -2638,87 +2583,30 @@ pub mod riscv {
 
         #[inline(always)]
         fn simd_splat(self, lhs: f64) -> Self::AccN {
-            let mut out = [0.0f64; 2];
-            unsafe {
-                asm!(
-                    "vsetivli x0, 2, e64, m1, ta, ma",
-                    "vfmv.v.f v0, {val}",
-                    "vse64.v v0, ({ptr})",
-                    val = in(freg) lhs,
-                    ptr = in(reg) out.as_mut_ptr(),
-                    out("v0") _,
-                    options(nostack)
-                );
-            }
-            out
+            f64x2::splat(lhs).to_array()
         }
 
         #[inline(always)]
         fn simd_mul(self, lhs: Self::AccN, rhs: Self::AccN) -> Self::AccN {
-            let mut out = [0.0f64; 2];
-            unsafe {
-                asm!(
-                    "vsetivli x0, 2, e64, m1, ta, ma",
-                    "vle64.v v0, ({a})",
-                    "vle64.v v1, ({b})",
-                    "vfmul.vv v2, v0, v1",
-                    "vse64.v v2, ({out})",
-                    a = in(reg) lhs.as_ptr(),
-                    b = in(reg) rhs.as_ptr(),
-                    out = in(reg) out.as_mut_ptr(),
-                    out("v0") _, out("v1") _, out("v2") _,
-                    options(nostack)
-                );
-            }
-            out
+            (f64x2::from_array(lhs) * f64x2::from_array(rhs)).to_array()
         }
 
         #[inline(always)]
         fn simd_add(self, lhs: Self::AccN, rhs: Self::AccN) -> Self::AccN {
-            let mut out = [0.0f64; 2];
-            unsafe {
-                asm!(
-                    "vsetivli x0, 2, e64, m1, ta, ma",
-                    "vle64.v v0, ({a})",
-                    "vle64.v v1, ({b})",
-                    "vfadd.vv v2, v0, v1",
-                    "vse64.v v2, ({out})",
-                    a = in(reg) lhs.as_ptr(),
-                    b = in(reg) rhs.as_ptr(),
-                    out = in(reg) out.as_mut_ptr(),
-                    out("v0") _, out("v1") _, out("v2") _,
-                    options(nostack)
-                );
-            }
-            out
+            (f64x2::from_array(lhs) + f64x2::from_array(rhs)).to_array()
         }
 
         #[inline(always)]
         fn simd_mult_add(self, lhs: Self::AccN, rhs: Self::AccN, acc: Self::AccN) -> Self::AccN {
-            let mut out = acc;
-            unsafe {
-                asm!(
-                    "vsetivli x0, 2, e64, m1, ta, ma",
-                    "vle64.v v0, ({a})",
-                    "vle64.v v1, ({b})",
-                    "vle64.v v2, ({c})",
-                    "vfmacc.vv v2, v0, v1",
-                    "vse64.v v2, ({out})",
-                    a = in(reg) lhs.as_ptr(),
-                    b = in(reg) rhs.as_ptr(),
-                    c = in(reg) acc.as_ptr(),
-                    out = in(reg) out.as_mut_ptr(),
-                    out("v0") _, out("v1") _, out("v2") _,
-                    options(nostack)
-                );
-            }
-            out
+            f64x2::from_array(lhs)
+                .mul_add(f64x2::from_array(rhs), f64x2::from_array(acc))
+                .to_array()
         }
 
         #[inline(always)]
         fn vectorize<F: NullaryFnOnce>(self, f: F) -> F::Output {
             #[inline]
-            // #[target_feature(enable = "v")]
+            #[target_feature(enable = "v")]
             unsafe fn implementation<F: NullaryFnOnce>(f: F) -> F::Output {
                 f.call()
             }
@@ -2884,7 +2772,7 @@ pub mod riscv {
         #[inline(always)]
         fn vectorize<F: NullaryFnOnce>(self, f: F) -> F::Output {
             #[inline]
-            // #[target_feature(enable = "v")]
+            #[target_feature(enable = "v")]
             unsafe fn implementation<F: NullaryFnOnce>(f: F) -> F::Output {
                 f.call()
             }

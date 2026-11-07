@@ -578,7 +578,7 @@ pub mod rvv {
 
         #[inline(always)]
         unsafe fn splat(value: T) -> Pack {
-            f32x4::splat(value).to_array()
+            transmute(f32x4::splat(value))
         }
 
         #[inline(always)]

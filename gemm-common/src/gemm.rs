@@ -105,7 +105,13 @@ pub const DEFAULT_THREADING_THRESHOLD: usize = 48 * 48 * 256;
 // we REALLY want to pack the rhs on aarch64 since we can use mul_add_lane
 #[cfg(target_arch = "aarch64")]
 pub const DEFAULT_RHS_PACKING_THRESHOLD: usize = 2;
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+pub const DEFAULT_RHS_PACKING_THRESHOLD: usize = 16;
+#[cfg(not(any(
+    target_arch = "aarch64",
+    target_arch = "riscv32",
+    target_arch = "riscv64",
+)))]
 pub const DEFAULT_RHS_PACKING_THRESHOLD: usize = 128;
 
 pub const DEFAULT_LHS_PACKING_THRESHOLD_SINGLE_THREAD: usize = 8;
@@ -526,20 +532,10 @@ pub unsafe fn gemm_basic_generic<
                     // on aarch64 we want the registers to be fully initialized
                     // for use with neon/amx
                     #[cfg(target_arch = "aarch64")]
-                    pack_rhs::<T, N, NR, _>(
-                        simd,
-                        n_chunk,
-                        k_chunk,
-                        packed_rhs,
-                        rhs.wrapping_offset(
-                            depth_outer as isize * rhs_rs + col_outer as isize * rhs_cs,
-                        ),
-                        rhs_cs,
-                        rhs_rs,
-                        packed_rhs_stride,
-                    );
+                    const NN: usize = N;
                     #[cfg(not(target_arch = "aarch64"))]
-                    pack_rhs::<T, 1, NR, _>(
+                    const NN: usize = 1;
+                    pack_rhs::<T, NN, NR, _>(
                         simd,
                         n_chunk,
                         k_chunk,
@@ -578,21 +574,10 @@ pub unsafe fn gemm_basic_generic<
 
                             if ncols > 0 {
                                 #[cfg(target_arch = "aarch64")]
-                                pack_rhs::<T, N, NR, _>(
-                                    simd,
-                                    ncols,
-                                    k_chunk,
-                                    packed_rhs.wrapping_add(j * packed_rhs_stride),
-                                    rhs.wrapping_offset(
-                                        depth_outer as isize * rhs_rs
-                                            + (col_outer + col_inner) as isize * rhs_cs,
-                                    ),
-                                    rhs_cs,
-                                    rhs_rs,
-                                    packed_rhs_stride,
-                                );
+                                const NN: usize = N;
                                 #[cfg(not(target_arch = "aarch64"))]
-                                pack_rhs::<T, 1, NR, _>(
+                                const NN: usize = 1;
+                                pack_rhs::<T, NN, NR, _>(
                                     simd,
                                     ncols,
                                     k_chunk,

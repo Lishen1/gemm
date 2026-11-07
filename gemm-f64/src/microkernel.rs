@@ -525,7 +525,7 @@ pub mod rvv {
 
         #[inline(always)]
         unsafe fn splat(value: T) -> Pack {
-            f64x2::splat(value).to_array()
+            transmute(f64x2::splat(value))
         }
 
         #[inline(always)]
@@ -610,7 +610,6 @@ pub mod rvv {
             [x4x1, x4x2, x4x3, x4x4,],
             [x5x1, x5x2, x5x3, x5x4,],
         }
-
         horizontal_kernel!(["v"], hx1x1, 1, 1);
         horizontal_kernel!(["v"], hx1x2, 1, 2);
         horizontal_kernel!(["v"], hx2x1, 2, 1);

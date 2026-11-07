@@ -1,5 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(riscv_target_feature)]
+#![feature(portable_simd)]
 
 use core::sync::atomic::{AtomicBool, Ordering::Relaxed};
 
