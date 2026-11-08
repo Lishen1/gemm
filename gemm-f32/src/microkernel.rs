@@ -564,12 +564,10 @@ pub mod simd128 {
 #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
 pub mod rvv {
     pub mod f32 {
-        use core::arch::asm;
-        use core::arch::riscv64::*;
         use core::mem::transmute;
 
-        use std::simd::f32x4;
-        use std::simd::prelude::SimdFloat;
+        use core::simd::f32x4;
+        use core::simd::prelude::SimdFloat;
         use std::simd::StdFloat;
 
         type T = f32;
@@ -677,7 +675,6 @@ pub mod rvv {
             [x5x1, x5x2, x5x3, x5x4,],
             [x6x1, x6x2, x6x3, x6x4,],
         }
-
         horizontal_kernel!(["v"], hx1x1, 1, 1);
         horizontal_kernel!(["v"], hx1x2, 1, 2);
         horizontal_kernel!(["v"], hx2x1, 2, 1);

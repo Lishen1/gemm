@@ -2401,8 +2401,8 @@ pub mod aarch64 {
 #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
 pub mod riscv {
     use super::*;
-    use std::simd::f32x4;
-    use std::simd::f64x2;
+    use core::simd::f32x4;
+    use core::simd::f64x2;
     use std::simd::StdFloat;
 
     #[derive(Copy, Clone, Debug)]

@@ -511,12 +511,10 @@ pub mod simd128 {
 #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
 pub mod rvv {
     pub mod f64 {
-        use core::arch::asm;
-        use core::arch::riscv64::*;
         use core::mem::transmute;
 
-        use std::simd::f64x2;
-        use std::simd::prelude::SimdFloat;
+        use core::simd::f64x2;
+        use core::simd::prelude::SimdFloat;
         use std::simd::StdFloat;
 
         type T = f64;
